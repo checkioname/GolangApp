@@ -1,5 +1,14 @@
 package main
 
+import (
+  "context"
+  "os"
+  "net/http"
+  "os/signal"
+  "pgstore"
+  "api"
+)
+
 
 func main(){
   if err := godotenv.Load; err != nil{
@@ -25,7 +34,7 @@ func main(){
 
   defer pool.Close()
 
-  if err := poll.Ping(ctx) err != nil{
+  if err := poll.Ping(ctx); err != nil{
     panic(err)
   }
 
@@ -34,14 +43,14 @@ func main(){
   handler := api.NewHandler(pgstore.New(pool))
 
   go func(){
-    if err := http.ListenAndServe(":808", handler); err!= nil{
-      if err !errors.Is(err, http.ErrServerClosed){
+    if err := http.ListenAndServe(":808", handler); err != nil{
+      if err != errors.Is(err, http.ErrServerClosed){
         panic(err)
       }
     }
   }()
 
-  quit := make(chane os.Signal, 1)
+  quit := make(chan os.Signal, 1)
   signal.Notify(quit, os.Interrupt) 
   <- quit
 }
