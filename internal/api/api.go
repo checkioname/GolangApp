@@ -1,5 +1,24 @@
 package api 
 
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"log/slog"
+	"net/http"
+	"sync"
+
+	"github.com/checkioname/GolangApp/internal/store/pgstore"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-chi/cors"
+	"github.com/google/uuid"
+	"github.com/gorilla/websocket"
+	"github.com/jackc/pgx/v5"
+)
+
+
 type apiHandler struct {
   q *pgstore.Queries //futuramente substituir para uma abstração
   r *chi.Mux //pacote para criar routers em go
@@ -19,7 +38,7 @@ func NewHandler(q *pgstore.Queries) http.Handler {
     q: q,
     upgrader: websocket.Upgrader{CheckOrigin: func(r *http.Request) bool{ return true}}, //Check origin clojure -> recebe um request e retorna true ou false
     subscribers: make(map[string]map[*websocket.Conn]context.CancelFunc),
-    mu : &sync.Mutex
+    mu : &sync.Mutex{},
   }
 
   r := chi.NewRouter()
@@ -35,7 +54,7 @@ func NewHandler(q *pgstore.Queries) http.Handler {
     AllowedMethods: []string{"GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"},
     AllowedHeaders: []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
     ExposedHeaders: []string{"Link"},
-    AllowedCredentials: false,
+    AllowCredentials: false,
     MaxAge: 300,
   }))
 
@@ -43,12 +62,12 @@ func NewHandler(q *pgstore.Queries) http.Handler {
   //agrupar todar as rotas na /api
   r.Route("/api", func(r chi.Router){
     r.Route("/rooms", func(r chi.Router){
-      r.Post("/", h htpp.HandlerCreateRoom)
+      r.Post("/", a.handleCreateRoom)
       r.Get("/", a.handleGetRooms)
 
       r.Route("/{room_id}/messages", func(r chi.Router){
         r.Post("/", a.handleCreateMessage)
-        r.Get("/"bin/
+        r.Get("/", a.handleGetRooms)
 
         r.Route("/{message_id}", func(r chi.Router){
           r.Get("/", a.handlerGetRoomMessage)
@@ -58,7 +77,7 @@ func NewHandler(q *pgstore.Queries) http.Handler {
         })
       })
     })
-
+  })
   a.r = r
   return a
 } 
@@ -115,7 +134,8 @@ func (h apiHandler) handleCreateRoom(w http.ResponseWriter, r *http.Request) {
     Theme string `json:"theme"`
   }
 
-  var body _bodyif err := json.NewDecoder(r.Body).Decode(&body); err !_ nil {
+  var body _body
+  if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
     http.Error(w, "invalid json", http.StatusBadRequest)
     return 
   }
@@ -145,4 +165,4 @@ func (h apiHandler) handleGetRooms(w http.ResponseWriter, r *http.Request) {}
 func (h apiHandler) handleReactToMessage(w http.ResponseWriter, r *http.Request) {}
 func (h apiHandler) handleRemoveReactFromMessage(w http.ResponseWriter, r *http.Request) {}
 func (h apiHandler) handleMarkMessageAsAnswered(w http.ResponseWriter, r *http.Request) {}
-}
+

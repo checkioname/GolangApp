@@ -5,8 +5,8 @@ import (
   "os"
   "net/http"
   "os/signal"
-  "pgstore"
-  "api"
+  "github.com/checkioname/GolangApp/internal/store/pgstore"
+  "github.com/checkioname/GolangApp/internal/api"
 )
 
 
