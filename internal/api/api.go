@@ -113,10 +113,10 @@ func (h apiHandler) handleSubscribe(w http.ResponseWriter, r *http.Request) {
 
   h.mu.Lock()
   if _, ok := h.subscribers[rawRoomID]; !ok{
-    h.subscribers[rawroomID][c] = make(map[*websocket.Conn]context.CancelFunc)
+    h.subscribers[rawRoomID] = make(map[*websocket.Conn]context.CancelFunc)
   }
   slog.Info("new client connect", "room_id", rawRoomID, "client_id", r.RemoteAddr)
-  h.subscribers[rawRoomID] = cancel
+  h.subscribers[rawRoomID][c] = cancel
   h.mu.Unlock() //depois que mexer no map, dar um unlock nele
 
   //ficar esperando o sinal do contexto dar Done (se o cliente ou servidor cancelar a conexao recebemos nesse canal)

@@ -7,11 +7,16 @@ import (
   "os/signal"
   "github.com/checkioname/GolangApp/internal/store/pgstore"
   "github.com/checkioname/GolangApp/internal/api"
+
+	"errors"
+	"fmt"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/joho/godotenv"
 )
 
 
 func main(){
-  if err := godotenv.Load; err != nil{
+  if err := godotenv.Load(); err != nil{
     panic(err)
   }
   
@@ -20,7 +25,7 @@ func main(){
   // criar um pool de conexoes com o banco de dados
   // pgx gerencia varias conexoes com o banco
   pool, err := pgxpool.New(ctx, fmt.Sprintf(
-    "user=%s password=%s host%s port=%s dbname=%s", 
+    "user=%s password=%s host=%s port=%s dbname=%s", 
     os.Getenv("WS_DATABASE_USER"), 
     os.Getenv("WS_DATABASE_PASSWORD"), 
     os.Getenv("WS_DATABASE_HOST"), 
@@ -34,7 +39,7 @@ func main(){
 
   defer pool.Close()
 
-  if err := poll.Ping(ctx); err != nil{
+  if err := pool.Ping(ctx); err != nil{
     panic(err)
   }
 
@@ -43,8 +48,8 @@ func main(){
   handler := api.NewHandler(pgstore.New(pool))
 
   go func(){
-    if err := http.ListenAndServe(":808", handler); err != nil{
-      if err != errors.Is(err, http.ErrServerClosed){
+    if err := http.ListenAndServe(":8080", handler); err != nil{
+      if !errors.Is(err, http.ErrServerClosed){
         panic(err)
       }
     }
