@@ -1,9 +1,10 @@
-package api 
+package api
 
 import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"sync"
@@ -26,12 +27,6 @@ type apiHandler struct {
   subscribers map[string]map[*websocket.Conn]context.CancelFunc
   mu *sync.Mutex //utilizar mutex para garantir que o acesso ao map seja somente um por vez
 }
-
-
-func (h apiHandler) ServeHTTP(w http.ResponseWriter, r *http.Request){
-  h.r.ServeHTTP(w, r)
-}
-
 
 func NewHandler(q *pgstore.Queries) http.Handler {
   a := apiHandler{
@@ -70,7 +65,7 @@ func NewHandler(q *pgstore.Queries) http.Handler {
         r.Get("/", a.handleGetRooms)
 
         r.Route("/{message_id}", func(r chi.Router){
-          r.Get("/", a.handlerGetRoomMessage)
+          r.Get("/", a.handleGetRoomMessage)
           r.Patch("/react", a.handleReactToMessage)
           r.Delete("/react", a.handleRemoveReactFromMessage)
           r.Patch("/answer", a.handleMarkMessageAsAnswered)
@@ -80,7 +75,19 @@ func NewHandler(q *pgstore.Queries) http.Handler {
   })
   a.r = r
   return a
-} 
+}
+
+
+func (h apiHandler) ServeHTTP(w http.ResponseWriter, r *http.Request){
+  h.r.ServeHTTP(w, r)
+}
+
+//envia resposta em formato json
+func SendJson(w http.ResponseWriter, rawData any){
+ data, _ := json.Marshal(rawData)
+  w.Header().Set("Content-Type", "application/json")
+  _,_ = w.Write(data)
+}
 
 //permitir websockets  (usar pacote gorilla)
 func (h apiHandler) handleSubscribe(w http.ResponseWriter, r *http.Request) {
@@ -152,17 +159,90 @@ func (h apiHandler) handleCreateRoom(w http.ResponseWriter, r *http.Request) {
     ID string `json:"id"`
   }
 
-  data, _ := json.Marshal(response{ID: roomID.String()})
-  w.Header().Set("Content-Type", "application/json")
-  _,_ = w.Write(data)
+  SendJson(w, response{ID: roomID.String()})
+}
+
+
+const (
+  MessageKindMessageCreated = "message_created"
+
+)
+
+type MessageMessageCreated struct {
+  ID string
+  Message string
+}
+
+
+type Message struct {
+  Kind string `json:"kind"`
+  Value any `json:"value"`
+  RoomID string `json:"-"`
+}
+
+func (h apiHandler) notifyClientes(msg Message) {
+  h.mu.Lock()
+  defer h.mu.Unlock()
+
+  subscribers, ok := h.subscribers[msg.RoomID]
+  if !ok || len(subscribers) == 0 {
+    return 
+  }
+
+  for conn, cancel := range subscribers {
+    if err := conn.WriteJSON(msg); err != nil {
+      slog.Error("failed to send mesage to client", "error", err)
+      cancel()
+    }
+  }
 }
 
 
 
+
 func (h apiHandler) handleCreateMessage(w http.ResponseWriter, r *http.Request) {}
-func (h apiHandler) handlerGetRoomMessage(w http.ResponseWriter, r *http.Request) {}
-func (h apiHandler) handleGetRooms(w http.ResponseWriter, r *http.Request) {}
+func (h apiHandler) handleGetRoomMessage(w http.ResponseWriter, r *http.Request) {
+  
+
+}
+
+
+func (h apiHandler) handleGetRooms(w http.ResponseWriter, r *http.Request) {
+  rooms, err := h.q.GetRooms(r.Context())
+    if err != nil{
+       slog.Error("couldnt get any room", "Error", err)
+       http.Error(w, "Failed to retrieve rooms", http.StatusInternalServerError)
+    }
+
+  if rooms == nil{
+    rooms =[]pgstore.Room{}
+  }
+
+  fmt.Println(rooms)
+
+  SendJson(w, rooms)
+}
+
+
 func (h apiHandler) handleReactToMessage(w http.ResponseWriter, r *http.Request) {}
 func (h apiHandler) handleRemoveReactFromMessage(w http.ResponseWriter, r *http.Request) {}
 func (h apiHandler) handleMarkMessageAsAnswered(w http.ResponseWriter, r *http.Request) {}
 
+
+
+//retorna as informações de uma sala
+func (h apiHandler) readRoom(w http.ResponseWriter, r *http.Request) (pgstore.Room, uuid.UUID, string, bool  ){
+  //pegar o id da sala
+  rawID := chi.URLParam(r, "room_id")
+  //decodar o id
+  roomID, _ := uuid.Parse(rawID)
+
+  room, err := h.q.GetRoom(r.Context(), roomID)
+  if err != nil{
+   http.Error(w, "failed to get room", http.StatusInternalServerError) 
+  }
+
+  return room, roomID, rawID, true
+
+  
+}
