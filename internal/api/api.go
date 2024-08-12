@@ -10,7 +10,6 @@ import (
 	"sync"
 
 	"github.com/checkioname/GolangApp/internal/store/pgstore"
-	"golang.org/x/text/message"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -163,15 +162,23 @@ func (h apiHandler) handleCreateRoom(w http.ResponseWriter, r *http.Request) {
   SendJson(w, response{ID: roomID.String()})
 }
 
-
+// constantes que serao usadas para notificar os usuarios
 const (
   MessageKindMessageCreated = "message_created"
-
+  MessageKindMessageReactionIncreased = "message_reaction_increased"
 )
 
+
+//estruturas para cada tipo de acao/notificacao
+
+type MessageMessageReactionIncreased struct {
+  ID string `json:"id"`
+  Count int64 `json:"count"`
+}
+
 type MessageMessageCreated struct {
-  ID string
-  Message string
+  ID string `json:"id"`
+  Message string `json:"message"`
 }
 
 
@@ -215,7 +222,7 @@ func (h apiHandler) handleCreateMessage(w http.ResponseWriter, r *http.Request) 
 
   var body _body
   //decodar o body da request e armazenar na variavel body -> decode(body)
-  if err := json.NewDecoder(r.Body).Decode(&body), != nil{
+  if err := json.NewDecoder(r.Body).Decode(&body); err != nil{
     http.Error(w, "unable to decode json", http.StatusBadRequest)
     return 
   }
@@ -241,16 +248,14 @@ func (h apiHandler) handleCreateMessage(w http.ResponseWriter, r *http.Request) 
   SendJson(w, response{ID: messageID.String()})
 
   //notificar os clientes em uma go routine
-  go notifyClientes(Message{
+  go h.notifyClientes(Message{
     Kind: MessageKindMessageCreated, 
     RoomID: rawRoomID,
     Value: MessageMessageCreated{
       ID: messageID.String(),
       Message: body.Message,
-    }
+    },
   })
-
-
 }
 
 ///////////////
@@ -260,8 +265,7 @@ func (h apiHandler) handleCreateMessage(w http.ResponseWriter, r *http.Request) 
 func (h apiHandler) handleGetRoomMessage(w http.ResponseWriter, r *http.Request) {
   
  //passar  o contexto e id da sala
-  rawRoomID := chi.URLParam(r, "room_id")
-  roomID, _ := uuid.Parse(rawRoomID)  
+  _,_,roomID,_ := h.getRoomInfo(w,r)
 
   messages, err := h.q.GetRoomMessages(r.Context(), roomID)
   if err != nil{
@@ -271,14 +275,17 @@ func (h apiHandler) handleGetRoomMessage(w http.ResponseWriter, r *http.Request)
 
   //se a lista for nula, retornar uma lista vazia
   if messages == nil{
-    messages = []pgstore.Message{}
+    messages = []pgstore.GetRoomMessagesRow{}
   }
 
   //caso tenha lista de mensagens, retornar elas
   SendJson(w, messages)
 }
 
+////////////////
 // get all rooms
+////////////////
+
 func (h apiHandler) handleGetRooms(w http.ResponseWriter, r *http.Request) {
   rooms, err := h.q.GetRooms(r.Context())
     if err != nil{
@@ -296,26 +303,68 @@ func (h apiHandler) handleGetRooms(w http.ResponseWriter, r *http.Request) {
 }
 
 
-func (h apiHandler) handleReactToMessage(w http.ResponseWriter, r *http.Request) {}
+func (h apiHandler) handleReactToMessage(w http.ResponseWriter, r *http.Request) {
+  // recebe o id da sala e chama o metodo de reagir 
+  _, rawRoomID, _, _ := h.getRoomInfo(w, r)
+
+ //se pegar o id da mensagem, entao reagir a uma mensagem 
+  rawMessageID := chi.URLParam(r, "message_id")
+  messageID, _ := uuid.Parse(rawMessageID)
+
+  reactionCount, err := h.q.ReactToMessage(r.Context(), messageID)
+
+  if err != nil{
+    http.Error(w, "internal server error", http.StatusBadRequest)
+    return
+  }
+
+  type response struct{
+    Count int64 `json:"count"`
+  }
+
+  //enviar response para o cliente com o numero de reacoes
+  SendJson(w, response{Count: reactionCount})
+
+  //notificar os clientes
+  go h.notifyClientes(Message{
+    Kind:     MessageKindMessageReactionIncreased, 
+    RoomID:  rawRoomID , 
+    Value:   MessageMessageReactionIncreased{
+      ID: rawMessageID,
+      Count: reactionCount,
+    } ,
+  })
+}
+
+
+
+
 func (h apiHandler) handleRemoveReactFromMessage(w http.ResponseWriter, r *http.Request) {}
 func (h apiHandler) handleMarkMessageAsAnswered(w http.ResponseWriter, r *http.Request) {}
 
 
-
+///////////////////
 //retorna as informações de uma sala
-func (h apiHandler) getRoomInfo(w http.ResponseWriter, r *http.Request) (pgstore.Room, uuid.UUID, string, bool  ){
+//////////////////
+
+func (h apiHandler) getRoomInfo(w http.ResponseWriter, r *http.Request) (pgstore.Room, string, uuid.UUID, bool  ){
   //pegar o id da sala
-  rawID := chi.URLParam(r, "room_id")
+  rawRoomID := chi.URLParam(r, "room_id")
   
   //decodar o id
-  roomID, _ := uuid.Parse(rawID)
+  roomID, err  := uuid.Parse(rawRoomID)
+  if err != nil{
+    http.Error(w, "invalid json", http.StatusBadRequest)
+    return pgstore.Room{}, "", uuid.UUID{}, false
+  }
 
   room, err := h.q.GetRoom(r.Context(), roomID)
   if err != nil{
    http.Error(w, "failed to get room", http.StatusInternalServerError) 
+    return pgstore.Room{}, "", uuid.UUID{}, false
   }
 
-  return room, roomID, rawID, true
+  return room, rawRoomID, roomID, true
 
   
 }
