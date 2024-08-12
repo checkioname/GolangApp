@@ -199,8 +199,10 @@ func (h apiHandler) notifyClientes(msg Message) {
 }
 
 
-
+//////////////////////////
 //enviar mensagens na sala
+//////////////////////////
+
 func (h apiHandler) handleCreateMessage(w http.ResponseWriter, r *http.Request) {
   //pegar o id da sala para gravar a mensagem e fazer cast
   rawRoomID := chi.URLParam(r, "room_id")
@@ -251,10 +253,29 @@ func (h apiHandler) handleCreateMessage(w http.ResponseWriter, r *http.Request) 
 
 }
 
+///////////////
+// retornar mensagens de uma sala
+///////////////
 
 func (h apiHandler) handleGetRoomMessage(w http.ResponseWriter, r *http.Request) {
   
+ //passar  o contexto e id da sala
+  rawRoomID := chi.URLParam(r, "room_id")
+  roomID, _ := uuid.Parse(rawRoomID)  
 
+  messages, err := h.q.GetRoomMessages(r.Context(), roomID)
+  if err != nil{
+    http.Error(w, "Interval server error", http.StatusInternalServerError)
+    return
+  }
+
+  //se a lista for nula, retornar uma lista vazia
+  if messages == nil{
+    messages = []pgstore.Message{}
+  }
+
+  //caso tenha lista de mensagens, retornar elas
+  SendJson(w, messages)
 }
 
 // get all rooms
