@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	"github.com/checkioname/GolangApp/internal/store/pgstore"
+	"golang.org/x/text/message"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -199,14 +200,64 @@ func (h apiHandler) notifyClientes(msg Message) {
 
 
 
+//enviar mensagens na sala
+func (h apiHandler) handleCreateMessage(w http.ResponseWriter, r *http.Request) {
+  //pegar o id da sala para gravar a mensagem e fazer cast
+  rawRoomID := chi.URLParam(r, "room_id")
+  roomID, _ := uuid.Parse(rawRoomID)
 
-func (h apiHandler) handleCreateMessage(w http.ResponseWriter, r *http.Request) {}
+  //ler a mensagem recebida na request
+  type _body struct {
+    Message string `json:"message"`
+  }
+
+  var body _body
+  //decodar o body da request e armazenar na variavel body -> decode(body)
+  if err := json.NewDecoder(r.Body).Decode(&body), != nil{
+    http.Error(w, "unable to decode json", http.StatusBadRequest)
+    return 
+  }
+
+  //se sucesso
+  //gravar a mensagem no banco de dados usar a estrutura de parametros
+  params := pgstore.InsertMessageParams{
+    RoomID: roomID,
+    Message: body.Message,
+  }
+
+  messageID, err := h.q.InsertMessage(r.Context(), params)
+  if err != nil{
+    http.Error(w, "failed to create message", http.StatusInternalServerError)
+    return
+  }
+ 
+  //se tiver gravado no banco, enviar resposta para o cliente
+  type response struct{
+    ID string `json:"id"`
+  }
+
+  SendJson(w, response{ID: messageID.String()})
+
+  //notificar os clientes em uma go routine
+  go notifyClientes(Message{
+    Kind: MessageKindMessageCreated, 
+    RoomID: rawRoomID,
+    Value: MessageMessageCreated{
+      ID: messageID.String(),
+      Message: body.Message,
+    }
+  })
+
+
+}
+
+
 func (h apiHandler) handleGetRoomMessage(w http.ResponseWriter, r *http.Request) {
   
 
 }
 
-
+// get all rooms
 func (h apiHandler) handleGetRooms(w http.ResponseWriter, r *http.Request) {
   rooms, err := h.q.GetRooms(r.Context())
     if err != nil{
@@ -231,9 +282,10 @@ func (h apiHandler) handleMarkMessageAsAnswered(w http.ResponseWriter, r *http.R
 
 
 //retorna as informações de uma sala
-func (h apiHandler) readRoom(w http.ResponseWriter, r *http.Request) (pgstore.Room, uuid.UUID, string, bool  ){
+func (h apiHandler) getRoomInfo(w http.ResponseWriter, r *http.Request) (pgstore.Room, uuid.UUID, string, bool  ){
   //pegar o id da sala
   rawID := chi.URLParam(r, "room_id")
+  
   //decodar o id
   roomID, _ := uuid.Parse(rawID)
 
