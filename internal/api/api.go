@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/checkioname/GolangApp/internal/store/pgstore"
+	"github.com/checkioname/GolangApp/internal/infraestructure/db/store/pgstore"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -157,36 +157,6 @@ func (h apiHandler) handleCreateRoom(w http.ResponseWriter, r *http.Request) {
 	}
 
 	SendJson(w, response{ID: roomID.String()})
-}
-
-// constantes que serao usadas para notificar os usuarios
-const (
-	MessageKindMessageCreated           = "message_created"
-	MessageKindMessageReactionIncreased = "message_reaction_increased"
-	MessageKindMessageAnswered          = "message_answered"
-)
-
-//estruturas para cada tipo de acao/notificacao
-
-type MessageMessageReactionIncreased struct {
-	ID    string `json:"id"`
-	Count int64  `json:"count"`
-}
-
-type MessageMessageCreated struct {
-	ID      string `json:"id"`
-	Message string `json:"message"`
-}
-
-type MessageMessageAnswered struct {
-	ID      string `json:"id"`
-	Message string `json:"message"`
-}
-
-type Message struct {
-	Kind   string `json:"kind"`
-	Value  any    `json:"value"`
-	RoomID string `json:"-"`
 }
 
 func (h apiHandler) notifyClientes(msg Message) {
