@@ -1,9 +1,13 @@
 package domain
 
-type Message struct {
+type MessageResponse struct {
 	Kind   string `json:"kind"`
 	Value  any    `json:"value"`
 	RoomID string `json:"-"`
+}
+
+type MessageRequest struct {
+	Message string `json:"message"`
 }
 
 // estruturas para cada tipo de acao/notificacao
@@ -28,3 +32,7 @@ const (
 	MessageKindMessageReactionIncreased = "message_reaction_increased"
 	MessageKindMessageAnswered          = "message_answered"
 )
+
+// metodo para pegar as informações de uma mensagem
+// rawMessageID := chi.URLParam(r, "message_id")
+// messageID, _ := uuid.Parse(rawMessageID)
